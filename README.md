@@ -1,19 +1,68 @@
-# online-som-rl-strategy-pinescript
+# Online SOM-RL Strategy (PineScript)
 
-Implements PineScript-strategy based on self-organizing maps and reinforcement learning to trade price movements for use in TradingView.
+An educational trading strategy that combines **Self-Organizing Maps (SOM)** with **Reinforcement Learning (Q-learning)** to make automated trading decisions in TradingView.
 
-This is an educational learning project only.
+## ⚠️ Important Disclaimers
 
-DISCLAIMER: DO NOT USE THIS SCRIPT WHEN YOU TRADE WITH YOUR REAL MONEY. I DO NOT GUARANTEE THAT THIS STRATEGY IS A PROFITABLE ONE LONG TERM. USE IT ON YOUR OWN RISK.
+**This is an educational learning project only.**
 
-## How to use
+**DO NOT USE THIS SCRIPT WHEN YOU TRADE WITH YOUR REAL MONEY. I DO NOT GUARANTEE THAT THIS STRATEGY IS A PROFITABLE ONE LONG TERM. USE IT ON YOUR OWN RISK.**
 
-Actual strategy is in file `./online-som-rl-strategy.txt`.
+## Overview
 
-1. Open any chart in <https://tradingview.com/>.
-2. Open the Pine Editor.
-3. Copy & paste the code in file `./online-som-rl-strategy.txt` into the editor.
-4. Use the "Add to chart"-button.
+This PineScript strategy implements a machine learning approach to trading that:
+
+1. **Learns market patterns** using Self-Organizing Maps (neural networks)
+2. **Makes decisions** using Q-learning reinforcement learning
+3. **Adapts over time** with dynamic learning parameters
+4. **Manages risk** through position sizing and volatility penalties
+
+## How It Works
+
+### Core Components
+
+- **SOM Network**: 20 nodes (configurable) that learn to represent different market states
+- **Input Features**: 50 past price ticks with normalized price and log-normalized volume
+- **Q-Learning**: Each SOM node maintains Q-values for 8 possible trading actions
+- **Reward System**: Risk-adjusted returns with penalties for overtrading and volatility
+
+### Learning Process
+
+1. **Delay Phase** (150 bars): No learning occurs
+2. **Warmup Phase** (7000 bars): Strategy learns patterns but doesn't trade
+3. **Live Trading Phase**: Makes decisions based on learned patterns
+
+### Trading Actions
+
+- **HOLD**: No position change
+- **BUY**: INV_500, INV_1000, INV_2000, INV_5000 (investment amounts)
+- **SELL**: SELL_500, SELL_1000, SELL_2000, SELL_5000 (sell amounts)
+
+### Risk Management
+
+- Trading penalties to discourage overtrading
+- Volatility adjustments based on market conditions
+- Position sizing penalties to prevent excessive exposure
+- Directional consistency bonuses for aligned trades
+
+## Usage Instructions
+
+The strategy code is in `./online-som-rl-strategy.txt`.
+
+1. Open any chart in [TradingView](https://tradingview.com/)
+2. Open the Pine Editor
+3. Copy & paste the code from `./online-som-rl-strategy.txt` into the editor
+4. Click "Add to chart" button
+5. Adjust parameters in the strategy settings as needed
+
+## Configurable Parameters
+
+- **M**: Past price ticks for input vector (default: 50)
+- **P**: Future ticks to evaluate reward (default: 20)
+- **N**: Number of SOM nodes (default: 20)
+- **Learning rates**: Exploration, beta, gamma parameters
+- **Phase durations**: Delay and warmup periods
+- **Trading penalties**: Risk management settings
 
 ## How to use claude code in this project
 
