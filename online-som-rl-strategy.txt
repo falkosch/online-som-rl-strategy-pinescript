@@ -10,6 +10,7 @@ type SOMNode
 source = input.source(close, title="Price source")
 
 M = input.int(50, minval=20, maxval=150, step=10, title="Past price ticks for input vector")
+action_context_window = input.int(10, minval=1, maxval=20, step=1, title="Past actions context window")
 P = input.int(20, minval=10, maxval=100, step=10, title="Future ticks to evaluate reward")
 N = input.int(20, minval=10, maxval=50, step=5, title="Number of nodes in Q-table")
 
@@ -43,6 +44,9 @@ std_price_p = ta.stdev(source, P) + numerical_epsilon
 risk_adjusted_return = ta.sma((source - source_p) / std_price_p, P)
 plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
 
+// === Action history tracking
+var action_history = array.new_int(0)
+
 // === dynamic learning parameters
 t_decay = math.pow(t_decay_factor, bar_index - learning_start_index) + numerical_epsilon
 exploration = initial_exploration * t_decay
@@ -70,12 +74,14 @@ new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0
         array.set(vector, index, random_value)
     vector
 
-// Constructs feature vector with normalized price and log-normalized volume for specified number of historical bars.
+// Constructs feature vector with normalized price, log-normalized volume, and bijective cosine-sine encoded past action context for specified number of historical bars.
 get_input_vector(int bars, int bar_offset = 0) =>
     if bars <= 0
         runtime.error("Number of bars must be positive")
     
-    input_vector = array.new_float(bars * 2)
+    // Calculate total vector size: (price + volume) * bars + action context (cos, sin pairs)
+    vector_size = bars * 2 + action_context_window * 2
+    input_vector = array.new_float(vector_size)
     last_bar_idx = bars - 1
     
     for bar_idx = 0 to last_bar_idx
@@ -92,6 +98,28 @@ get_input_vector(int bars, int bar_offset = 0) =>
         // Store in vector (price, volume pairs)
         array.set(input_vector, bar_idx * 2, price_normalized)
         array.set(input_vector, bar_idx * 2 + 1, volume_normalized)
+    
+    // Add bijective cosine-sine encoded action context to input vector
+    action_history_size = array.size(action_history)
+    last_action_idx = action_context_window - 1
+    
+    for action_idx = 0 to last_action_idx
+        // Get action from history (0 if not enough history)
+        cos_value = 0.0
+        sin_value = 0.0
+        if action_idx < action_history_size
+            // Get action from end of history (most recent first)
+            history_idx = action_history_size - 1 - action_idx
+            action_index = array.get(action_history, history_idx)
+            // Bijective encoding: map action index to angle and take both cos and sin
+            angle = 2.0 * math.pi * action_index / num_actions
+            cos_value := math.cos(angle)
+            sin_value := math.sin(angle)
+        
+        // Store cosine and sine values for bijective representation
+        base_idx = bars * 2 + action_idx * 2
+        array.set(input_vector, base_idx, cos_value)
+        array.set(input_vector, base_idx + 1, sin_value)
     
     input_vector
 
@@ -134,8 +162,8 @@ distance(float[] a, float[] b) =>
 // === SOM Initialization
 var som = array.new<SOMNode>(N)
 if bar_index == 0
-    // Calculate state size without creating unnecessary arrays
-    state_vector_size = M * 2  // Price and volume pairs
+    // Calculate state size: price/volume pairs + action context (cos, sin pairs)
+    state_vector_size = M * 2 + action_context_window * 2
     last_som_index = N - 1
     
     for som_index = 0 to last_som_index
@@ -254,6 +282,13 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
         [best_i, best_d, best_node] = find_best_node(input_next)
         [best_q_i, best_q] = find_best_q(best_node)
         action_label = action_labels.get(best_q_i)
+        
+        // Update action history
+        array.push(action_history, best_q_i)
+        // Keep only the last action_context_window actions
+        if array.size(action_history) > action_context_window
+            array.shift(action_history)
+        
         log.info("bar {0}, {1} - i={2}, d={3}, q_i={4}, q={5}, a={6}", bar_index, t_decay, best_i, best_d, best_q_i, best_q, action_label)
 
         if str.startswith(action_label, "INV")
