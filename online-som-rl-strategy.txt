@@ -56,7 +56,7 @@ HOLD_ACTION_LABEL = "HOLD"
 action_labels = array.from(HOLD_ACTION_LABEL, "INV_500", "INV_1000", "INV_2000", "INV_5000", "SELL_500", "SELL_1000", "SELL_2000", "SELL_5000")
 num_actions = array.size(action_labels)
 
-// === Random initialize vector
+// Creates a new array of specified size filled with random values within given range.
 new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0, float max_value = 1.0) =>
     if vector_size <= 0
         runtime.error("Vector size must be positive")
@@ -70,7 +70,7 @@ new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0
         array.set(vector, index, random_value)
     vector
 
-// === Get current input vector of M points with an offset to current bar_index
+// Constructs feature vector with normalized price and log-normalized volume for specified number of historical bars.
 get_input_vector(int bars, int bar_offset = 0) =>
     if bars <= 0
         runtime.error("Number of bars must be positive")
@@ -95,13 +95,13 @@ get_input_vector(int bars, int bar_offset = 0) =>
     
     input_vector
 
-// === Computes tangent hyperbolic
+// Calculates hyperbolic tangent function for reward normalization.
 tanh(x) =>
     exp_x_pos = math.exp(x)
     exp_x_neg = math.exp(-x)
     (exp_x_pos - exp_x_neg) / (exp_x_pos + exp_x_neg + numerical_epsilon)
 
-// === Compute squared distance
+// Calculates Euclidean distance squared between two vectors for SOM similarity measurement.
 squared_distance(float[] a, float[] b) =>
     last = a.size() - 1
     d = 0.0
@@ -110,6 +110,7 @@ squared_distance(float[] a, float[] b) =>
         d += diff * diff
     d
 
+// Calculates cosine distance (1 - cosine similarity) between two vectors for SOM similarity measurement.
 cosine_distance(float[] a, float[] b) =>
     last = a.size() - 1
     norm_a = 0.0
@@ -123,6 +124,7 @@ cosine_distance(float[] a, float[] b) =>
         dot_ab += value_a * value_b
     1.0 - dot_ab / (math.sqrt(norm_a * norm_b) + numerical_epsilon)
 
+// Selects and applies the configured distance function for vector similarity calculation.
 distance(float[] a, float[] b) =>
     switch distance_function
         "cosine" => cosine_distance(a, b)
@@ -145,7 +147,7 @@ if bar_index == 0
         som_node = SOMNode.new(initial_state, initial_q_values)
         array.set(som, som_index, som_node)
 
-// === Finds state vector matching best with input vector x
+// Identifies the SOM node with state vector closest to the input vector using the selected distance function.
 find_best_node(float[] x) =>
     best_i = 0
     best_node = array.get(som, 0)
@@ -160,7 +162,7 @@ find_best_node(float[] x) =>
             best_d := d
     [best_i, best_d, best_node]
 
-// === Finds best q-value in SOMNode
+// Selects the action with highest Q-value from a SOM node, with optional epsilon-greedy exploration.
 find_best_q(SOMNode node, p_exploration = 0.0) =>
     if math.random(0.0, 1.0) <= p_exploration
         // Ensure random index is within bounds
@@ -180,13 +182,13 @@ find_best_q(SOMNode node, p_exploration = 0.0) =>
         
         [best_action_index, best_q_value]
 
-// === Computes Gaussian neighborhood kernel
+// Calculates Gaussian neighborhood influence for SOM learning based on distance from winning node.
 gaussian_kernel(int winner_index, int node_index) =>
     distance_squared = math.pow(winner_index - node_index, 2)
     sigma_squared_times_2 = 2.0 * sigma * sigma + numerical_epsilon
     math.exp(-distance_squared / sigma_squared_times_2)
 
-// === Updates neighbourhood states using 1D Gaussian kernel
+// Updates SOM node states using Gaussian-weighted learning based on distance from the winning node.
 update_som_with_neighbors(int winner_index, float[] input_vector) =>
     last_node_index = N - 1
     
@@ -202,7 +204,7 @@ update_som_with_neighbors(int winner_index, float[] input_vector) =>
             updated_value = current_state_value + beta * neighborhood_influence * (input_value - current_state_value)
             array.set(node_state, state_index, updated_value)
 
-// === Reward calculation function
+// Computes reward signal incorporating returns, volatility penalties, position costs, and directional bonuses.
 reward(string action_label, float current_position) =>
     // Base return calculation
     base_return = (source - source_p) / std_price_p
