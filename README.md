@@ -57,12 +57,29 @@ The strategy code is in `./online-som-rl-strategy.txt`.
 
 ## Configurable Parameters
 
+### Core Parameters
 - **M**: Past price ticks for input vector (default: 50)
 - **P**: Future ticks to evaluate reward (default: 20)
 - **N**: Number of SOM nodes (default: 20)
-- **Learning rates**: Exploration, beta, gamma parameters
-- **Phase durations**: Delay and warmup periods
-- **Trading penalties**: Risk management settings
+
+### Learning Parameters
+- **Initial exploration**: Exploration probability (default: 0.1)
+- **Initial beta**: Learning rate (default: 0.6)
+- **Initial gamma**: Discount factor (default: 0.9)
+- **Sigma factor**: Neighborhood width (default: 0.05)
+- **Time decay factor**: Parameter decay rate (default: 0.9992)
+
+### Reward Function Parameters
+- **Volatility penalty factor**: Penalty for high volatility (default: 0.1)
+- **Volatility penalty cap**: Maximum volatility penalty (default: 0.05)
+- **Position penalty factor**: Penalty for large positions (default: 0.001)
+- **Directional bonus**: Reward for directional consistency (default: 0.01)
+- **Trading penalty**: Cost of trading (default: 0.02)
+
+### Phase Control
+- **Delay phase**: Bars before learning starts (default: 150)
+- **Warmup phase**: Learning-only period (default: 7000)
+- **SOM update frequency**: Update SOM every N bars (default: 2)
 
 ## How to use claude code in this project
 

@@ -19,6 +19,12 @@ initial_beta = input.float(0.6, minval=0.1, maxval=1.0, step=0.05, title="Learni
 initial_gamma = input.float(0.9, minval=0.5, maxval=0.99, step=0.01, title="Discount factor (gamma)")
 trading_penalty = input.float(0.02, minval=0.0, maxval=0.1, step=0.01, title="Trading penalty")
 
+// === Reward function parameters
+volatility_penalty_factor = input.float(0.1, minval=0.01, maxval=0.5, step=0.01, title="Volatility penalty factor")
+volatility_penalty_cap = input.float(0.05, minval=0.01, maxval=0.2, step=0.01, title="Maximum volatility penalty")
+position_penalty_factor = input.float(0.001, minval=0.0001, maxval=0.01, step=0.0001, title="Position sizing penalty factor")
+directional_bonus = input.float(0.01, minval=0.0, maxval=0.05, step=0.001, title="Directional consistency bonus")
+
 t_decay_factor = input.float(0.9992, minval=0.001, maxval=1.0, title="Time decay factor for learning parameters")
 update_som_each_n_bar = input.int(2, minval=1, title="How many bars to skip updating the SOM")
 delay_phase = input.int(150, minval=0, title="How many bars to wait before the SOM should start to learn")
@@ -48,30 +54,43 @@ action_labels = array.from(HOLD_ACTION_LABEL, "INV_500", "INV_1000", "INV_2000",
 num_actions = array.size(action_labels)
 
 // === Random initialize vector
-new_random_vector(int size, float base = 0.0, float max = 1.0, float min = 0.0) =>
-    v = array.new_float(size)
-    last = size - 1
-    for j = 0 to last
-        array.set(v, j, base + math.random(min, max))
-    v
+new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0, float max_value = 1.0) =>
+    if vector_size <= 0
+        runtime.error("Vector size must be positive")
+    if min_value > max_value
+        runtime.error("Min value cannot be greater than max value")
+    
+    vector = array.new_float(vector_size)
+    last_index = vector_size - 1
+    for index = 0 to last_index
+        random_value = base_value + math.random(min_value, max_value)
+        array.set(vector, index, random_value)
+    vector
 
 // === Get current input vector of M points with an offset to current bar_index
-get_input_vector(int bars, int offset = 0) =>
-    v = array.new_float(bars * 2)
-    last = bars - 1
-    for i = 0 to last
-        j = offset + i
-        // Z-score normalize price
-        price_raw = source[j]
-        price_val = na(price_raw) ? 0.0 : price_raw
-        price_z = na(mean_price_mp) ? price_val : ((price_val - mean_price_mp) / std_price_mp)
-        // array.set(v, i, price_val)
-        // Log normalize volume
-        volume_raw = volume[j]
-        volume_val = na(volume_raw) ? 0.0 : math.log(volume_raw + 1.0)
-        array.set(v, i * 2, price_val)
-        array.set(v, i * 2 + 1, volume_val)
-    v
+get_input_vector(int bars, int bar_offset = 0) =>
+    if bars <= 0
+        runtime.error("Number of bars must be positive")
+    
+    input_vector = array.new_float(bars * 2)
+    last_bar_index = bars - 1
+    
+    for bar_index = 0 to last_bar_index
+        historical_offset = bar_offset + bar_index
+        
+        // Get normalized price
+        price_raw = source[historical_offset]
+        price_normalized = na(price_raw) ? 0.0 : price_raw
+        
+        // Get log-normalized volume
+        volume_raw = volume[historical_offset]
+        volume_normalized = na(volume_raw) ? 0.0 : math.log(volume_raw + 1.0)
+        
+        // Store in vector (price, volume pairs)
+        array.set(input_vector, bar_index * 2, price_normalized)
+        array.set(input_vector, bar_index * 2 + 1, volume_normalized)
+    
+    input_vector
 
 // === Computes tangent hyperbolic
 tanh(x) =>
@@ -108,10 +127,18 @@ distance(float[] a, float[] b) =>
 // === SOM Initialization
 var som = array.new<SOMNode>(N)
 if bar_index == 0
-    state_size = get_input_vector(M).size()
-    som_last = N - 1
-    for i = 0 to som_last
-        array.set(som, i, SOMNode.new(new_random_vector(state_size), new_random_vector(num_actions, 0.001, 0.0)))
+    // Calculate state size without creating unnecessary arrays
+    state_vector_size = M * 2  // Price and volume pairs
+    last_som_index = N - 1
+    
+    for som_index = 0 to last_som_index
+        // Initialize state vector with small random values
+        initial_state = new_random_vector(state_vector_size, 0.0, -0.1, 0.1)
+        // Initialize Q-values with small positive values
+        initial_q_values = new_random_vector(num_actions, 0.001, 0.0, 0.002)
+        
+        som_node = SOMNode.new(initial_state, initial_q_values)
+        array.set(som, som_index, som_node)
 
 // === Finds state vector matching best with input vector x
 find_best_node(float[] x) =>
@@ -131,55 +158,68 @@ find_best_node(float[] x) =>
 // === Finds best q-value in SOMNode
 find_best_q(SOMNode node, p_exploration = 0.0) =>
     if math.random(0.0, 1.0) <= p_exploration
-        explore_i = math.floor(math.random(0, num_actions))
+        // Ensure random index is within bounds
+        explore_i = math.floor(math.random(0, num_actions - 0.0001))
+        explore_i := math.max(0, math.min(explore_i, num_actions - 1))
         [explore_i, node.q_values.get(explore_i)]
     else
-        best_i = 0
-        best_q = array.get(node.q_values, 0)
-        last = num_actions - 1
-        for i = 1 to last
-            q = array.get(node.q_values, i)
-            if q > best_q
-                best_i := i
-                best_q := q
-        [best_i, best_q]
+        best_action_index = 0
+        best_q_value = array.get(node.q_values, 0)
+        last_action_index = num_actions - 1
+        
+        for action_index = 1 to last_action_index
+            current_q_value = array.get(node.q_values, action_index)
+            if current_q_value > best_q_value
+                best_action_index := action_index
+                best_q_value := current_q_value
+        
+        [best_action_index, best_q_value]
 
 // === Computes Gaussian neighborhood kernel
-sigma_squared_2 = 2.0 * sigma * sigma + numerical_epsilon
-guassian_kernel(int winner_i, int node_i) =>
-    d = winner_i - node_i
-    math.exp(-d * d / sigma_squared_2)
+gaussian_kernel(int winner_index, int node_index) =>
+    distance_squared = math.pow(winner_index - node_index, 2)
+    sigma_squared_times_2 = 2.0 * sigma * sigma + numerical_epsilon
+    math.exp(-distance_squared / sigma_squared_times_2)
 
 // === Updates neighbourhood states using 1D Gaussian kernel
-update_som_with_neighbors(int winner_i, float[] input) =>
-    node_last = N - 1
-    for node_i = 0 to node_last
-        node = array.get(som, node_i)
-        h = guassian_kernel(winner_i, node_i)
-        state = node.state
-        state_last = state.size() - 1
-        for i = 0 to state_last
-            input_value = array.get(input, i)
-            old = array.get(state, i)
-            array.set(state, i, old + beta * h * (input_value - old))
+update_som_with_neighbors(int winner_index, float[] input_vector) =>
+    last_node_index = N - 1
+    
+    for node_index = 0 to last_node_index
+        current_node = array.get(som, node_index)
+        neighborhood_influence = gaussian_kernel(winner_index, node_index)
+        node_state = current_node.state
+        last_state_index = node_state.size() - 1
+        
+        for state_index = 0 to last_state_index
+            input_value = array.get(input_vector, state_index)
+            current_state_value = array.get(node_state, state_index)
+            updated_value = current_state_value + beta * neighborhood_influence * (input_value - current_state_value)
+            array.set(node_state, state_index, updated_value)
 
-// Rewards
+// === Reward calculation function
 reward(string action_label, float current_position) =>
-    // Base return
+    // Base return calculation
     base_return = (source - source_p) / std_price_p
+    
     // Volatility penalty for high-risk periods
-    volatility_penalty = math.min(std_price_p * 0.1, 0.05)
+    calculated_volatility_penalty = math.min(std_price_p * volatility_penalty_factor, volatility_penalty_cap)
+    
     // Position sizing penalty (discourage overtrading)
-    position_penalty = math.abs(current_position) * 0.001
+    calculated_position_penalty = math.abs(current_position) * position_penalty_factor
+    
     // Directional consistency bonus
     price_direction = math.sign(source - source[1])
     action_direction = str.contains(action_label, "INV") ? 1.0 : 
                       str.contains(action_label, "SELL") ? -1.0 : 0.0
-    directional_bonus = price_direction == action_direction ? 0.01 : 0.0
+    calculated_directional_bonus = price_direction == action_direction ? directional_bonus : 0.0
+    
     // Trading cost
     trading_cost = action_label == "HOLD" ? 0.0 : trading_penalty
-    // Squash values to compensate excessive rewards
-    tanh(base_return - volatility_penalty - position_penalty - trading_cost + directional_bonus)
+    
+    // Calculate final reward with tanh normalization
+    final_reward = base_return - calculated_volatility_penalty - calculated_position_penalty - trading_cost + calculated_directional_bonus
+    tanh(final_reward)
 
 if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
     // First perform Online Learning (per bar)
@@ -210,9 +250,15 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
         log.info("bar {0}, {1} - i={2}, d={3}, q_i={4}, q={5}, a={6}", bar_index, t_decay, best_i, best_d, best_q_i, best_q, action_label)
 
         if str.startswith(action_label, "INV")
-            strategy.entry("SOM", strategy.long, qty=str.tonumber(str.replace(action_label, "INV_", "")))
+            qty_str = str.replace(action_label, "INV_", "")
+            trade_quantity = str.tonumber(qty_str)
+            if not na(trade_quantity) and trade_quantity > 0
+                strategy.entry("SOM", strategy.long, qty=trade_quantity)
         else if str.startswith(action_label, "SELL")
-            strategy.entry("SOM", strategy.short, qty=str.tonumber(str.replace(action_label, "SELL_", "")))
+            qty_str = str.replace(action_label, "SELL_", "")
+            trade_quantity = str.tonumber(qty_str)
+            if not na(trade_quantity) and trade_quantity > 0
+                strategy.entry("SOM", strategy.short, qty=trade_quantity)
         // HOLD does nothing
 
-plot(math.log(1+strategy.opentrades.capital_held), color=color.new(color.blue, 80), title="Log open trades capitel held")
+plot(math.log(1+strategy.opentrades.capital_held), color=color.new(color.blue, 80), title="Log open trades capital held")
