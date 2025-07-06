@@ -1,0 +1,28 @@
+{
+  "name": "online-som-rl-strategy-pinescript",
+  "author": {
+    "name": "Falko Schwabe",
+    "url": "https://github.com/falkosch"
+  },
+  "keywords": [
+    "self-organizing-map",
+    "reinforcement-learning",
+    "q-learning",
+    "pinescript",
+    "pinescript-strategies",
+    "claude-code"
+  ],
+  "description": "Implements PineScript-strategy based on self-organizing maps and reinforcement learning to trade price movements for use in TradingView. DISCLAIMER: USE AT YOUR OWN RISK.",
+  "license": "CC BY-NC 4.0",
+  "files": [
+    "online-som-rl-strategy.txt"
+  ],
+  "scripts": {
+    "start": "claude",
+    "claude-init": "claude init",
+    "postinstall": "npm install -g @anthropic-ai/claude-code"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/claude-code": "latest"
+  }
+}
