@@ -73,10 +73,10 @@ get_input_vector(int bars, int bar_offset = 0) =>
         runtime.error("Number of bars must be positive")
     
     input_vector = array.new_float(bars * 2)
-    last_bar_index = bars - 1
+    last_bar_idx = bars - 1
     
-    for bar_index = 0 to last_bar_index
-        historical_offset = bar_offset + bar_index
+    for bar_idx = 0 to last_bar_idx
+        historical_offset = bar_offset + bar_idx
         
         // Get normalized price
         price_raw = source[historical_offset]
@@ -87,8 +87,8 @@ get_input_vector(int bars, int bar_offset = 0) =>
         volume_normalized = na(volume_raw) ? 0.0 : math.log(volume_raw + 1.0)
         
         // Store in vector (price, volume pairs)
-        array.set(input_vector, bar_index * 2, price_normalized)
-        array.set(input_vector, bar_index * 2 + 1, volume_normalized)
+        array.set(input_vector, bar_idx * 2, price_normalized)
+        array.set(input_vector, bar_idx * 2 + 1, volume_normalized)
     
     input_vector
 
