@@ -15,7 +15,7 @@
   "description": "Implements PineScript-strategy based on self-organizing maps and reinforcement learning to trade price movements for use in TradingView. DISCLAIMER: USE AT YOUR OWN RISK.",
   "license": "CC BY-NC 4.0",
   "files": [
-    "online-som-rl-strategy.txt"
+    "online-som-rl-strategy.pinescript"
   ],
   "scripts": {
     "start": "claude",

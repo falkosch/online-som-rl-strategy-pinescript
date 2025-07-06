@@ -107,11 +107,11 @@ The input vector consists of three main components:
 
 ## Usage Instructions
 
-The strategy code is in `./online-som-rl-strategy.txt`.
+The strategy code is in `./online-som-rl-strategy.pinescript`.
 
 1. Open any chart in [TradingView](https://tradingview.com/)
 2. Open the Pine Editor
-3. Copy & paste the code from `./online-som-rl-strategy.txt` into the editor
+3. Copy & paste the code from `./online-som-rl-strategy.pinescript` into the editor
 4. Click "Add to chart" button
 5. Adjust parameters in the strategy settings as needed
 

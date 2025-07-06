@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-This is an educational PineScript trading strategy that combines Self-Organizing Maps (SOM) with Reinforcement Learning (Q-learning) for TradingView. The main strategy code is in `online-som-rl-strategy.txt`.
+This is an educational PineScript trading strategy that combines Self-Organizing Maps (SOM) with Reinforcement Learning (Q-learning) for TradingView. The main strategy code is in `online-som-rl-strategy.pinescript`.
 
 ## Key Files
 
-- `online-som-rl-strategy.txt` - Main PineScript strategy file (219 lines)
+- `online-som-rl-strategy.pinescript` - Main PineScript strategy file (219 lines)
 - `README.md` - Project documentation
 - `package.json` - Project metadata and Claude Code integration
 
@@ -34,7 +34,7 @@ This is an educational PineScript trading strategy that combines Self-Organizing
 
 ### When Working with Strategy Code
 
-- **File**: Always work with `online-som-rl-strategy.txt`
+- **File**: Always work with `online-som-rl-strategy.pinescript`
 - **Language**: PineScript v6 syntax
 - **Testing**: Cannot run automated tests - this is PineScript for TradingView
 - **Validation**: Code must be manually tested in TradingView Pine Editor
@@ -94,7 +94,7 @@ When adjusting parameters, focus on:
 
 Since this is PineScript:
 
-1. Copy code from `online-som-rl-strategy.txt`
+1. Copy code from `online-som-rl-strategy.pinescript`
 2. Paste into TradingView Pine Editor
 3. Check for syntax errors
 4. Add to chart and monitor performance
@@ -109,7 +109,7 @@ Since this is PineScript:
 
 ## Development Workflow
 
-1. Make changes to `online-som-rl-strategy.txt`
+1. Make changes to `online-som-rl-strategy.pinescript`
 2. Test in TradingView Pine Editor
 3. Document parameter changes in commit messages
 4. **Always update README.md** to reflect any changes made to the project
