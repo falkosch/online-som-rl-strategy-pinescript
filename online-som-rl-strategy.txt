@@ -74,54 +74,135 @@ new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0
         array.set(vector, index, random_value)
     vector
 
-// Constructs feature vector with normalized price, log-normalized volume, and bijective cosine-sine encoded past action context for specified number of historical bars.
-get_input_vector(int bars, int bar_offset = 0) =>
-    if bars <= 0
-        runtime.error("Number of bars must be positive")
+// Preprocesses price and volume features optimized for cosine distance (pattern-focused, DC-removed).
+get_cosine_features(int bars, int bar_offset = 0) =>
+    price_series = array.new_float(bars)
+    volume_series = array.new_float(bars)
+    features = array.new_float(bars * 2)
     
-    // Calculate total vector size: (price + volume) * bars + action context (cos, sin pairs)
-    vector_size = bars * 2 + action_context_window * 2
-    input_vector = array.new_float(vector_size)
-    last_bar_idx = bars - 1
-    
-    for bar_idx = 0 to last_bar_idx
+    // Collect raw data
+    for bar_idx = 0 to bars - 1
         historical_offset = bar_offset + bar_idx
-        
-        // Get normalized price
         price_raw = source[historical_offset]
-        price_normalized = na(price_raw) ? 0.0 : price_raw
-        
-        // Get log-normalized volume
         volume_raw = volume[historical_offset]
-        volume_normalized = na(volume_raw) ? 0.0 : math.log(volume_raw + 1.0)
         
-        // Store in vector (price, volume pairs)
-        array.set(input_vector, bar_idx * 2, price_normalized)
-        array.set(input_vector, bar_idx * 2 + 1, volume_normalized)
+        array.set(price_series, bar_idx, na(price_raw) ? 0.0 : price_raw)
+        array.set(volume_series, bar_idx, na(volume_raw) ? 1.0 : volume_raw)
     
-    // Add bijective cosine-sine encoded action context to input vector
+    // Calculate means for DC removal
+    price_mean = array.avg(price_series)
+    volume_mean = math.log(array.avg(volume_series) + 1.0)
+    
+    // Process features for cosine distance
+    for bar_idx = 0 to bars - 1
+        // Price returns with DC removal
+        price_val = array.get(price_series, bar_idx)
+        price_return = bar_idx > 0 ? (price_val - array.get(price_series, bar_idx - 1)) / math.max(array.get(price_series, bar_idx - 1), numerical_epsilon) : 0.0
+        price_feature = price_return - (price_mean / math.max(price_mean, numerical_epsilon))
+        
+        // Volume with DC removal
+        volume_val = array.get(volume_series, bar_idx)
+        volume_log = math.log(volume_val + 1.0)
+        volume_feature = volume_log - volume_mean
+        
+        array.set(features, bar_idx * 2, price_feature)
+        array.set(features, bar_idx * 2 + 1, volume_feature)
+    
+    features
+
+// Preprocesses price and volume features optimized for Euclidean distance (z-score normalized, equal contribution).
+get_euclidean_features(int bars, int bar_offset = 0) =>
+    price_series = array.new_float(bars)
+    volume_series = array.new_float(bars)
+    features = array.new_float(bars * 2)
+    
+    // Collect raw data
+    for bar_idx = 0 to bars - 1
+        historical_offset = bar_offset + bar_idx
+        price_raw = source[historical_offset]
+        volume_raw = volume[historical_offset]
+        
+        array.set(price_series, bar_idx, na(price_raw) ? 0.0 : price_raw)
+        array.set(volume_series, bar_idx, na(volume_raw) ? 1.0 : volume_raw)
+    
+    // Calculate price returns
+    price_return_series = array.new_float(bars)
+    for bar_idx = 0 to bars - 1
+        price_val = array.get(price_series, bar_idx)
+        price_return = bar_idx > 0 ? (price_val - array.get(price_series, bar_idx - 1)) / math.max(array.get(price_series, bar_idx - 1), numerical_epsilon) : 0.0
+        array.set(price_return_series, bar_idx, price_return)
+    
+    // Calculate volume log series
+    volume_log_series = array.new_float(bars)
+    for bar_idx = 0 to bars - 1
+        volume_log = math.log(array.get(volume_series, bar_idx) + 1.0)
+        array.set(volume_log_series, bar_idx, volume_log)
+    
+    // Calculate statistics for z-score normalization
+    price_return_mean = array.avg(price_return_series)
+    price_return_std = array.stdev(price_return_series) + numerical_epsilon
+    volume_mean = array.avg(volume_log_series)
+    volume_std = array.stdev(volume_log_series) + numerical_epsilon
+    
+    // Apply z-score normalization with clipping
+    for bar_idx = 0 to bars - 1
+        // Z-score normalized price returns (clipped to [-3, 3])
+        price_return = array.get(price_return_series, bar_idx)
+        price_zscore = (price_return - price_return_mean) / price_return_std
+        price_feature = math.max(-3.0, math.min(3.0, price_zscore))
+        
+        // Z-score normalized volume (clipped to [-3, 3])
+        volume_log = array.get(volume_log_series, bar_idx)
+        volume_zscore = (volume_log - volume_mean) / volume_std
+        volume_feature = math.max(-3.0, math.min(3.0, volume_zscore))
+        
+        array.set(features, bar_idx * 2, price_feature)
+        array.set(features, bar_idx * 2 + 1, volume_feature)
+    
+    features
+
+// Adds bijective cosine-sine encoded action context to the input vector.
+add_action_context(float[] input_vector, int bars) =>
     action_history_size = array.size(action_history)
-    last_action_idx = action_context_window - 1
     
-    for action_idx = 0 to last_action_idx
-        // Get action from history (0 if not enough history)
+    for action_idx = 0 to action_context_window - 1
         cos_value = 0.0
         sin_value = 0.0
+        
         if action_idx < action_history_size
             // Get action from end of history (most recent first)
             history_idx = action_history_size - 1 - action_idx
             action_index = array.get(action_history, history_idx)
-            // Bijective encoding: map action index to angle and take both cos and sin
+            // Bijective encoding: map action index to angle
             angle = 2.0 * math.pi * action_index / num_actions
             cos_value := math.cos(angle)
             sin_value := math.sin(angle)
         
-        // Store cosine and sine values for bijective representation
+        // Store cosine and sine values
         base_idx = bars * 2 + action_idx * 2
         array.set(input_vector, base_idx, cos_value)
         array.set(input_vector, base_idx + 1, sin_value)
     
     input_vector
+
+// Constructs feature vector optimized for the selected distance function with proper normalization and preprocessing.
+get_input_vector(int bars, int bar_offset = 0) =>
+    if bars <= 0
+        runtime.error("Number of bars must be positive")
+    
+    // Get distance-specific features
+    price_volume_features = distance_function == "cosine" ? get_cosine_features(bars, bar_offset) : get_euclidean_features(bars, bar_offset)
+    
+    // Create full input vector with action context
+    vector_size = bars * 2 + action_context_window * 2
+    input_vector = array.new_float(vector_size)
+    
+    // Copy price/volume features
+    for i = 0 to bars * 2 - 1
+        array.set(input_vector, i, array.get(price_volume_features, i))
+    
+    // Add action context
+    add_action_context(input_vector, bars)
 
 // Calculates hyperbolic tangent function for reward normalization.
 tanh(x) =>
