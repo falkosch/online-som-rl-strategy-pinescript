@@ -25,6 +25,9 @@ volatility_penalty_cap = input.float(0.05, minval=0.01, maxval=0.2, step=0.01, t
 position_penalty_factor = input.float(0.001, minval=0.0001, maxval=0.01, step=0.0001, title="Position sizing penalty factor")
 directional_bonus = input.float(0.01, minval=0.0, maxval=0.05, step=0.001, title="Directional consistency bonus")
 
+// === Algorithm parameters
+distance_function = input.string("cosine", options=["cosine", "euclidean"], title="Distance function for SOM")
+
 t_decay_factor = input.float(0.9992, minval=0.001, maxval=1.0, title="Time decay factor for learning parameters")
 update_som_each_n_bar = input.int(2, minval=1, title="How many bars to skip updating the SOM")
 delay_phase = input.int(150, minval=0, title="How many bars to wait before the SOM should start to learn")
@@ -121,8 +124,10 @@ cosine_distance(float[] a, float[] b) =>
     1.0 - dot_ab / (math.sqrt(norm_a * norm_b) + numerical_epsilon)
 
 distance(float[] a, float[] b) =>
-    cosine_distance(a, b)
-    // squared_distance(a, b)
+    switch distance_function
+        "cosine" => cosine_distance(a, b)
+        "euclidean" => squared_distance(a, b)
+        => cosine_distance(a, b)  // default fallback
 
 // === SOM Initialization
 var som = array.new<SOMNode>(N)

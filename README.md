@@ -76,6 +76,9 @@ The strategy code is in `./online-som-rl-strategy.txt`.
 - **Directional bonus**: Reward for directional consistency (default: 0.01)
 - **Trading penalty**: Cost of trading (default: 0.02)
 
+### Algorithm Parameters
+- **Distance function**: Method for SOM similarity calculation (default: "cosine", options: "cosine", "euclidean")
+
 ### Phase Control
 - **Delay phase**: Bars before learning starts (default: 150)
 - **Warmup phase**: Learning-only period (default: 7000)
