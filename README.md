@@ -62,11 +62,13 @@ The input vector consists of three main components:
 ### Distance-Optimized Preprocessing
 
 #### For Cosine Distance (Pattern Recognition)
+
 - **Price Processing**: Uses price returns with DC component removal to focus on relative movements
 - **Volume Processing**: Log-normalized volume with mean subtraction to capture relative volume patterns
 - **Benefit**: Emphasizes market patterns and trends while being scale-invariant, ideal for regime detection
 
 #### For Euclidean Distance (Magnitude-Sensitive)
+
 - **Price Processing**: Z-score normalized price returns (mean=0, std=1) with outlier clipping to [-3, 3]
 - **Volume Processing**: Z-score normalized log-volume with outlier clipping to [-3, 3]
 - **Benefit**: Ensures equal contribution from all features, sensitive to both direction and magnitude of changes
@@ -74,18 +76,21 @@ The input vector consists of three main components:
 ### Feature Components Explained
 
 #### 1. Price Features
+
 - **Purpose**: Capture market price dynamics and trends
 - **Preprocessing**: Returns-based (percentage changes) rather than raw prices to achieve stationarity
 - **Benefit**: Removes price level bias, focuses on relative movements that are more predictive
 - **Why Important**: SOMs can learn different market regimes (trending, ranging, volatile) from price patterns
 
 #### 2. Volume Features  
+
 - **Purpose**: Capture market participation and liquidity conditions
 - **Preprocessing**: Log transformation to handle volume's heavy-tailed distribution
 - **Benefit**: Volume often precedes price movements and indicates market conviction
 - **Why Important**: Helps SOM distinguish between high-conviction moves and noise
 
 #### 3. Action Context (Past Trading Decisions)
+
 - **Purpose**: Provide memory of recent trading behavior to prevent repetitive mistakes
 - **Preprocessing**: Bijective cosine-sine encoding maps each action to unique (cos θ, sin θ) pairs
 - **Benefit**: Prevents action loops and incorporates behavioral consistency
@@ -118,11 +123,13 @@ The strategy code is in `./online-som-rl-strategy.pinescript`.
 ## Configurable Parameters
 
 ### Core Parameters
+
 - **M**: Past price ticks for input vector (default: 50)
 - **P**: Future ticks to evaluate reward (default: 20)
 - **N**: Number of SOM nodes (default: 20)
 
 ### Learning Parameters
+
 - **Initial exploration**: Exploration probability (default: 0.1)
 - **Initial beta**: Learning rate (default: 0.6)
 - **Initial gamma**: Discount factor (default: 0.9)
@@ -130,6 +137,7 @@ The strategy code is in `./online-som-rl-strategy.pinescript`.
 - **Time decay factor**: Parameter decay rate (default: 0.9992)
 
 ### Reward Function Parameters
+
 - **Volatility penalty factor**: Penalty for high volatility (default: 0.1)
 - **Volatility penalty cap**: Maximum volatility penalty (default: 0.05)
 - **Position penalty factor**: Penalty for large positions (default: 0.001)
@@ -137,9 +145,11 @@ The strategy code is in `./online-som-rl-strategy.pinescript`.
 - **Trading penalty**: Cost of trading (default: 0.02)
 
 ### Algorithm Parameters
+
 - **Distance function**: Method for SOM similarity calculation (default: "cosine", options: "cosine", "euclidean")
 
 ### Phase Control
+
 - **Delay phase**: Bars before learning starts (default: 150)
 - **Warmup phase**: Learning-only period (default: 7000)
 - **SOM update frequency**: Update SOM every N bars (default: 2)
