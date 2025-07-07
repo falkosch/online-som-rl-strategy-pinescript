@@ -25,6 +25,7 @@ volatility_penalty_factor = input.float(0.1, minval=0.01, maxval=0.5, step=0.01,
 volatility_penalty_cap = input.float(0.05, minval=0.01, maxval=0.2, step=0.01, title="Maximum volatility penalty")
 position_penalty_factor = input.float(0.001, minval=0.0001, maxval=0.01, step=0.0001, title="Position sizing penalty factor")
 directional_bonus = input.float(0.01, minval=0.0, maxval=0.05, step=0.001, title="Directional consistency bonus")
+zscore_clip_range = input.float(3.0, minval=1.0, maxval=5.0, step=0.5, title="Z-score clipping range")
 
 // === Algorithm parameters
 distance_function = input.string("cosine", options=["cosine", "euclidean"], title="Distance function for SOM")
@@ -146,15 +147,15 @@ get_euclidean_features(int bars, int bar_offset = 0) =>
     
     // Apply z-score normalization with clipping
     for bar_idx = 0 to bars - 1
-        // Z-score normalized price returns (clipped to [-3, 3])
+        // Z-score normalized price returns (clipped to configured range)
         price_return = array.get(price_return_series, bar_idx)
         price_zscore = (price_return - price_return_mean) / price_return_std
-        price_feature = math.max(-3.0, math.min(3.0, price_zscore))
+        price_feature = math.max(-zscore_clip_range, math.min(zscore_clip_range, price_zscore))
         
-        // Z-score normalized volume (clipped to [-3, 3])
+        // Z-score normalized volume (clipped to configured range)
         volume_log = array.get(volume_log_series, bar_idx)
         volume_zscore = (volume_log - volume_mean) / volume_std
-        volume_feature = math.max(-3.0, math.min(3.0, volume_zscore))
+        volume_feature = math.max(-zscore_clip_range, math.min(zscore_clip_range, volume_zscore))
         
         array.set(features, bar_idx * 2, price_feature)
         array.set(features, bar_idx * 2 + 1, volume_feature)
@@ -203,6 +204,8 @@ get_input_vector(int bars, int bar_offset = 0) =>
     
     // Add action context
     add_action_context(input_vector, bars)
+    
+    input_vector
 
 // Calculates hyperbolic tangent function for reward normalization.
 tanh(x) =>
@@ -274,9 +277,8 @@ find_best_node(float[] x) =>
 // Selects the action with highest Q-value from a SOM node, with optional epsilon-greedy exploration.
 find_best_q(SOMNode node, p_exploration = 0.0) =>
     if math.random(0.0, 1.0) <= p_exploration
-        // Ensure random index is within bounds
-        explore_i = math.floor(math.random(0, num_actions - 0.0001))
-        explore_i := math.max(0, math.min(explore_i, num_actions - 1))
+        // Generate random action index with proper bounds
+        explore_i = math.floor(math.random() * num_actions)
         [explore_i, node.q_values.get(explore_i)]
     else
         best_action_index = 0
@@ -341,7 +343,7 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
     // First perform Online Learning (per bar)
     // Get current state
     input_now = get_input_vector(M, P)
-    input_next = get_input_vector(M)
+    input_next = get_input_vector(M, 0)
     [best_i_now, _, best_node_now] = find_best_node(input_now)
     [best_q_i_now, _] = find_best_q(best_node_now, exploration)
     action_label = array.get(action_labels, best_q_i_now)
@@ -362,7 +364,7 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
         // === Action Selection on Last Bar
         [best_i, best_d, best_node] = find_best_node(input_next)
         [best_q_i, best_q] = find_best_q(best_node)
-        action_label = action_labels.get(best_q_i)
+        action_label = array.get(action_labels, best_q_i)
         
         // Update action history
         array.push(action_history, best_q_i)
