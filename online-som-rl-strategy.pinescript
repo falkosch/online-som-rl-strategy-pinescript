@@ -20,8 +20,8 @@ initial_gamma = input.float(0.9, minval=0.5, maxval=0.99, step=0.01, title="Disc
 trading_penalty = input.float(0.02, minval=0.0, maxval=0.1, step=0.01, title="Trading penalty")
 
 // === Reward function parameters
-volatility_penalty_factor = input.float(0.1, minval=0.01, maxval=0.5, step=0.01, title="Volatility penalty factor")
-volatility_penalty_cap = input.float(0.05, minval=0.01, maxval=0.2, step=0.01, title="Maximum volatility penalty")
+volatility_penalty_factor = input.float(0.05, minval=0.01, maxval=1.0, step=0.01, title="Volatility penalty factor")
+volatility_penalty_cap = input.float(0.1, minval=0.01, maxval=1.0, step=0.01, title="Maximum volatility penalty")
 position_penalty_factor = input.float(0.001, minval=0.0001, maxval=0.01, step=0.0001, title="Position sizing penalty factor")
 directional_bonus = input.float(0.01, minval=0.0, maxval=0.05, step=0.001, title="Directional consistency bonus")
 zscore_clip_range = input.float(3.0, minval=1.0, maxval=5.0, step=0.5, title="Z-score clipping range")
@@ -71,7 +71,8 @@ drawdown_penalty = math.max(max_drawdown_p - 0.05, 0.0) // Penalize > 5% max dra
 // Sharpe-like ratio: per-period return adjusted for path quality
 base_return = (per_period_return * path_smoothness - drawdown_penalty) / math.max(avg_period_volatility, numerical_epsilon)
 
-calculated_volatility_penalty = math.min(std_price_p * volatility_penalty_factor, volatility_penalty_cap)
+uncapped_volatility_penalty = math.log(math.sqrt(std_price_p)) * volatility_penalty_factor
+calculated_volatility_penalty = math.min(uncapped_volatility_penalty, volatility_penalty_cap)
 price_direction = math.sign(source - source[1])
 risk_adjusted_return = ta.sma(base_return, P)
 
@@ -81,7 +82,8 @@ plot(base_return, color=color.new(color.blue, 70), title="Base Return")
 plot(per_period_return * 100, color=color.new(color.aqua, 70), title="Per-period Return %")
 plot(path_smoothness, color=color.new(color.purple, 70), title="Path Smoothness")
 plot(drawdown_penalty * 100, color=color.new(color.red, 70), title="Drawdown Penalty %")
-plot(calculated_volatility_penalty * 100, color=color.new(color.orange, 70), title="Volatility Penalty %")
+plot(calculated_volatility_penalty * 100, color=color.new(color.orange, 70), title="Volatility Penalty % (Capped)")
+plot(uncapped_volatility_penalty * 100, color=color.new(color.fuchsia, 70), title="Volatility Penalty % (Uncapped)")
 
 // === Feature preprocessing statistics (M-period backward-looking)
 price_mean_M = ta.sma(safe_source, M)
