@@ -10,7 +10,6 @@ type SOMNode
 source = input.source(close, title="Price source")
 
 M = input.int(50, minval=20, maxval=150, step=10, title="Past price ticks for input vector")
-action_context_window = input.int(10, minval=1, maxval=20, step=1, title="Past actions context window")
 P = input.int(20, minval=10, maxval=100, step=10, title="Future ticks to evaluate reward")
 N = input.int(20, minval=10, maxval=50, step=5, title="Number of nodes in Q-table")
 
@@ -39,14 +38,10 @@ numerical_epsilon = input.float(1e-6, minval=1e-8, maxval=1e-2, title="To avoid 
 // === Cached metrics
 source_p = source[P]
 learning_start_index = math.max(M + P, delay_phase)
-mean_price_mp = ta.sma(source_p, M)
-std_price_mp = ta.stdev(source_p, M) + numerical_epsilon
 std_price_p = ta.stdev(source, P) + numerical_epsilon
 risk_adjusted_return = ta.sma((source - source_p) / std_price_p, P)
 plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
 
-// === Action history tracking
-var action_history = array.new_int(0)
 
 // === dynamic learning parameters
 t_decay = math.pow(t_decay_factor, bar_index - learning_start_index) + numerical_epsilon
@@ -75,24 +70,20 @@ new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0
         array.set(vector, index, random_value)
     vector
 
-// Preprocesses price and volume features optimized for cosine distance (pattern-focused, DC-removed).
+// Preprocesses price features optimized for cosine distance (pattern-focused, DC-removed).
 get_cosine_features(int bars, int bar_offset = 0) =>
     price_series = array.new_float(bars)
-    volume_series = array.new_float(bars)
-    features = array.new_float(bars * 2)
+    features = array.new_float(bars)
     
     // Collect raw data
     for bar_idx = 0 to bars - 1
         historical_offset = bar_offset + bar_idx
         price_raw = source[historical_offset]
-        volume_raw = volume[historical_offset]
         
         array.set(price_series, bar_idx, na(price_raw) ? 0.0 : price_raw)
-        array.set(volume_series, bar_idx, na(volume_raw) ? 1.0 : volume_raw)
     
-    // Calculate means for DC removal
+    // Calculate mean for DC removal
     price_mean = array.avg(price_series)
-    volume_mean = math.log(array.avg(volume_series) + 1.0)
     
     // Process features for cosine distance
     for bar_idx = 0 to bars - 1
@@ -101,30 +92,21 @@ get_cosine_features(int bars, int bar_offset = 0) =>
         price_return = bar_idx > 0 ? (price_val - array.get(price_series, bar_idx - 1)) / math.max(array.get(price_series, bar_idx - 1), numerical_epsilon) : 0.0
         price_feature = price_return - (price_mean / math.max(price_mean, numerical_epsilon))
         
-        // Volume with DC removal
-        volume_val = array.get(volume_series, bar_idx)
-        volume_log = math.log(volume_val + 1.0)
-        volume_feature = volume_log - volume_mean
-        
-        array.set(features, bar_idx * 2, price_feature)
-        array.set(features, bar_idx * 2 + 1, volume_feature)
+        array.set(features, bar_idx, price_feature)
     
     features
 
-// Preprocesses price and volume features optimized for Euclidean distance (z-score normalized, equal contribution).
+// Preprocesses price features optimized for Euclidean distance (z-score normalized).
 get_euclidean_features(int bars, int bar_offset = 0) =>
     price_series = array.new_float(bars)
-    volume_series = array.new_float(bars)
-    features = array.new_float(bars * 2)
+    features = array.new_float(bars)
     
     // Collect raw data
     for bar_idx = 0 to bars - 1
         historical_offset = bar_offset + bar_idx
         price_raw = source[historical_offset]
-        volume_raw = volume[historical_offset]
         
         array.set(price_series, bar_idx, na(price_raw) ? 0.0 : price_raw)
-        array.set(volume_series, bar_idx, na(volume_raw) ? 1.0 : volume_raw)
     
     // Calculate price returns
     price_return_series = array.new_float(bars)
@@ -133,17 +115,9 @@ get_euclidean_features(int bars, int bar_offset = 0) =>
         price_return = bar_idx > 0 ? (price_val - array.get(price_series, bar_idx - 1)) / math.max(array.get(price_series, bar_idx - 1), numerical_epsilon) : 0.0
         array.set(price_return_series, bar_idx, price_return)
     
-    // Calculate volume log series
-    volume_log_series = array.new_float(bars)
-    for bar_idx = 0 to bars - 1
-        volume_log = math.log(array.get(volume_series, bar_idx) + 1.0)
-        array.set(volume_log_series, bar_idx, volume_log)
-    
     // Calculate statistics for z-score normalization
     price_return_mean = array.avg(price_return_series)
     price_return_std = array.stdev(price_return_series) + numerical_epsilon
-    volume_mean = array.avg(volume_log_series)
-    volume_std = array.stdev(volume_log_series) + numerical_epsilon
     
     // Apply z-score normalization with clipping
     for bar_idx = 0 to bars - 1
@@ -152,60 +126,18 @@ get_euclidean_features(int bars, int bar_offset = 0) =>
         price_zscore = (price_return - price_return_mean) / price_return_std
         price_feature = math.max(-zscore_clip_range, math.min(zscore_clip_range, price_zscore))
         
-        // Z-score normalized volume (clipped to configured range)
-        volume_log = array.get(volume_log_series, bar_idx)
-        volume_zscore = (volume_log - volume_mean) / volume_std
-        volume_feature = math.max(-zscore_clip_range, math.min(zscore_clip_range, volume_zscore))
-        
-        array.set(features, bar_idx * 2, price_feature)
-        array.set(features, bar_idx * 2 + 1, volume_feature)
+        array.set(features, bar_idx, price_feature)
     
     features
 
-// Adds bijective cosine-sine encoded action context to the input vector.
-add_action_context(float[] input_vector, int bars) =>
-    action_history_size = array.size(action_history)
-    
-    for action_idx = 0 to action_context_window - 1
-        cos_value = 0.0
-        sin_value = 0.0
-        
-        if action_idx < action_history_size
-            // Get action from end of history (most recent first)
-            history_idx = action_history_size - 1 - action_idx
-            action_index = array.get(action_history, history_idx)
-            // Bijective encoding: map action index to angle
-            angle = 2.0 * math.pi * action_index / num_actions
-            cos_value := math.cos(angle)
-            sin_value := math.sin(angle)
-        
-        // Store cosine and sine values
-        base_idx = bars * 2 + action_idx * 2
-        array.set(input_vector, base_idx, cos_value)
-        array.set(input_vector, base_idx + 1, sin_value)
-    
-    input_vector
 
 // Constructs feature vector optimized for the selected distance function with proper normalization and preprocessing.
 get_input_vector(int bars, int bar_offset = 0) =>
     if bars <= 0
         runtime.error("Number of bars must be positive")
     
-    // Get distance-specific features
-    price_volume_features = distance_function == "cosine" ? get_cosine_features(bars, bar_offset) : get_euclidean_features(bars, bar_offset)
-    
-    // Create full input vector with action context
-    vector_size = bars * 2 + action_context_window * 2
-    input_vector = array.new_float(vector_size)
-    
-    // Copy price/volume features
-    for i = 0 to bars * 2 - 1
-        array.set(input_vector, i, array.get(price_volume_features, i))
-    
-    // Add action context
-    add_action_context(input_vector, bars)
-    
-    input_vector
+    // Get distance-specific features (price only)
+    distance_function == "cosine" ? get_cosine_features(bars, bar_offset) : get_euclidean_features(bars, bar_offset)
 
 // Calculates hyperbolic tangent function for reward normalization.
 tanh(x) =>
@@ -246,8 +178,8 @@ distance(float[] a, float[] b) =>
 // === SOM Initialization
 var som = array.new<SOMNode>(N)
 if bar_index == 0
-    // Calculate state size: price/volume pairs + action context (cos, sin pairs)
-    state_vector_size = M * 2 + action_context_window * 2
+    // Calculate state size: price returns only
+    state_vector_size = M
     last_som_index = N - 1
     
     for som_index = 0 to last_som_index
@@ -366,11 +298,6 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
         [best_q_i, best_q] = find_best_q(best_node)
         action_label = array.get(action_labels, best_q_i)
         
-        // Update action history
-        array.push(action_history, best_q_i)
-        // Keep only the last action_context_window actions
-        if array.size(action_history) > action_context_window
-            array.shift(action_history)
         
         log.info("bar {0}, {1} - i={2}, d={3}, q_i={4}, q={5}, a={6}", bar_index, t_decay, best_i, best_d, best_q_i, best_q, action_label)
 
