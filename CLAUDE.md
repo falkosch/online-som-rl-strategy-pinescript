@@ -1,4 +1,6 @@
-# Claude Instructions for Online SOM-RL Strategy Project
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -6,8 +8,8 @@ This is an educational PineScript trading strategy that combines Self-Organizing
 
 ## Key Files
 
-- `online-som-rl-strategy.pinescript` - Main PineScript strategy file (219 lines)
-- `README.md` - Project documentation
+- `online-som-rl-strategy.pinescript` - Main PineScript strategy file (336 lines)
+- `README.md` - Project documentation (may be outdated - check against code)
 - `package.json` - Project metadata and Claude Code integration
 
 ## Strategy Architecture
@@ -15,14 +17,14 @@ This is an educational PineScript trading strategy that combines Self-Organizing
 ### Core Components
 
 1. **SOM Network**: Neural network with N nodes (default 20) that learn market state representations
-2. **Q-Learning**: Each SOM node maintains Q-values for 8 trading actions
-3. **Input Features**: M past price ticks (default 50) with normalized price and log-normalized volume
+2. **Q-Learning**: Each SOM node maintains Q-values for 9 trading actions
+3. **Input Features**: M past price ticks (default 50) with distance-function optimized preprocessing
 4. **Reward System**: Risk-adjusted returns with trading penalties
 
 ### Learning Phases
 
 1. **Delay Phase**: 150 bars - no learning
-2. **Warmup Phase**: 7000 bars - learns patterns, no trading
+2. **Warmup Phase**: 7000 bars - learns patterns, no trading  
 3. **Live Trading**: Makes decisions based on learned patterns
 
 ### Trading Actions
@@ -61,7 +63,7 @@ This is an educational PineScript trading strategy that combines Self-Organizing
 
 - Trading penalties to discourage overtrading
 - Volatility adjustments
-- Position sizing penalties
+- Position sizing penalties  
 - Directional consistency bonuses
 
 ## Common Tasks
@@ -107,25 +109,32 @@ Since this is PineScript:
 - **Performance Dependent**: Results vary significantly based on market conditions
 - **Parameter Sensitivity**: Small changes can have large impacts on performance
 
-## Development Workflow
+## Critical Architecture Details
 
-1. Make changes to `online-som-rl-strategy.pinescript`
-2. Test in TradingView Pine Editor
-3. Document parameter changes in commit messages
-4. **Always update README.md** to reflect any changes made to the project
-5. Maintain educational disclaimers
+### Input Vector Simplification
+
+The current implementation uses simplified 50-dimensional price-only input vectors, optimized for distance function performance. This differs from earlier documentation that described more complex 120-dimensional vectors.
+
+### Distance Function Optimization
+
+Two distance functions available:
+
+- **Cosine Distance**: Pattern recognition with DC removal
+- **Euclidean Distance**: Z-score normalization with outlier clipping
+
+Both use precomputed series statistics for performance.
+
+### Recent Optimizations
+
+Recent commits show focus on:
+
+- Precomputed price series for distance calculations
+- Action labels refactored to custom types
+- Input vector simplified from complex multi-component to price-only
 
 ## Documentation Maintenance
 
-**CRITICAL**: The `README.md` must always be kept current and accurate:
-
-- Update documentation for ANY changes to the strategy, parameters, features, or functionality
-- Ensure all sections reflect the current state of the implementation
-- Maintain consistency between the strategy code and its documentation
-- Keep usage instructions, parameter descriptions, and feature explanations up to date
-- Document any modifications to the learning process, trading logic, or risk management
-
-The README serves as the primary source of truth for users - it must always accurately represent the current project state.
+**CRITICAL**: The `README.md` may be outdated compared to the current implementation. Always verify documentation against the actual code in `online-som-rl-strategy.pinescript` and update README when making changes.
 
 ## Security Considerations
 
