@@ -35,29 +35,28 @@ delay_phase = input.int(150, minval=0, title="How many bars to wait before the S
 warmup_phase = input.int(7000, minval=0, title="How many bars to let the SOM learn first")
 numerical_epsilon = input.float(1e-6, minval=1e-8, maxval=1e-2, title="To avoid division by zero and improve numerical stability")
 
-// === Cached metrics
-source_p = source[P]
-learning_start_index = math.max(M + P, delay_phase)
-std_price_p = ta.stdev(source, P) + numerical_epsilon
-risk_adjusted_return = ta.sma((source - source_p) / std_price_p, P)
-plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
-
-// === Use native series for optimized price access
+// === Source data preparation and validation
 safe_source = na(source) ? 0.0 : source
 
-// === Precomputed series statistics for feature optimization
-price_mean_M = ta.sma(safe_source, M)
-price_mean_return_M = ta.sma(ta.roc(safe_source, 1), M)
-price_stdev_return_M = ta.stdev(ta.roc(safe_source, 1), M)
-
-
-// === dynamic learning parameters
+// === Learning algorithm parameters
+learning_start_index = math.max(M + P, delay_phase)
 t_decay = math.pow(t_decay_factor, bar_index - learning_start_index) + numerical_epsilon
 exploration = initial_exploration * t_decay
 sigma = N * initial_sigma_factor * t_decay
 beta = initial_beta * t_decay
 gamma = initial_gamma * t_decay
 plot(t_decay, color=color.new(color.orange, 80), title="t_decay")
+
+// === Reward calculation metrics (P-period forward-looking)
+source_p = source[P]
+std_price_p = ta.stdev(source, P) + numerical_epsilon
+risk_adjusted_return = ta.sma((source - source_p) / std_price_p, P)
+plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
+
+// === Feature preprocessing statistics (M-period backward-looking)
+price_mean_M = ta.sma(safe_source, M)
+price_mean_return_M = ta.sma(ta.roc(safe_source, 1), M)
+price_stdev_return_M = ta.stdev(ta.roc(safe_source, 1), M)
 
 // === Action options
 type TradingAction
