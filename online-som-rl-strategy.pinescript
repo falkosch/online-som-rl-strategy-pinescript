@@ -45,21 +45,52 @@ exploration = initial_exploration * t_decay
 sigma = N * initial_sigma_factor * t_decay
 beta = initial_beta * t_decay
 gamma = initial_gamma * t_decay
+
+// Debug plots for learning parameters
 plot(t_decay, color=color.new(color.orange, 80), title="t_decay")
+plot(exploration, color=color.new(color.yellow, 80), title="exploration")
+plot(beta, color=color.new(color.gray, 80), title="beta")
 
 // === Reward calculation metrics (P-period forward-looking)
 source_p = source[P]
 std_price_p = ta.stdev(source, P) + numerical_epsilon
-base_return = (source - source_p) / std_price_p
+
+// Time-invariant reward calculation using P as forward-looking sample size
+// Convert to per-period returns to make time-invariant
+per_period_return = math.pow((source / math.max(source_p, numerical_epsilon)), 1.0 / P) - 1.0
+
+// Path quality metrics over P-period window (sample-based, not cumulative)
+avg_period_volatility = ta.stdev(ta.roc(source, 1), P) // Per-bar volatility estimate
+path_volatility = avg_period_volatility * math.sqrt(P) // Annualized volatility estimate
+path_smoothness = 1.0 / (1.0 + path_volatility) // Inverse relationship with volatility
+
+// Maximum drawdown as percentage of highest point in window
+max_drawdown_p = (ta.highest(source, P) - ta.lowest(source, P)) / math.max(ta.highest(source, P), numerical_epsilon)
+drawdown_penalty = math.max(max_drawdown_p - 0.05, 0.0) // Penalize > 5% max drawdown
+
+// Sharpe-like ratio: per-period return adjusted for path quality
+base_return = (per_period_return * path_smoothness - drawdown_penalty) / math.max(avg_period_volatility, numerical_epsilon)
+
 calculated_volatility_penalty = math.min(std_price_p * volatility_penalty_factor, volatility_penalty_cap)
 price_direction = math.sign(source - source[1])
 risk_adjusted_return = ta.sma(base_return, P)
+
+// Debug plots for reward metrics
 plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
+plot(base_return, color=color.new(color.blue, 70), title="Base Return")
+plot(per_period_return * 100, color=color.new(color.aqua, 70), title="Per-period Return %")
+plot(path_smoothness, color=color.new(color.purple, 70), title="Path Smoothness")
+plot(drawdown_penalty * 100, color=color.new(color.red, 70), title="Drawdown Penalty %")
+plot(calculated_volatility_penalty * 100, color=color.new(color.orange, 70), title="Volatility Penalty %")
 
 // === Feature preprocessing statistics (M-period backward-looking)
 price_mean_M = ta.sma(safe_source, M)
 price_mean_return_M = ta.sma(ta.roc(safe_source, 1), M)
 price_stdev_return_M = ta.stdev(ta.roc(safe_source, 1), M)
+
+// Debug plots for feature preprocessing
+plot(price_mean_return_M * 100, color=color.new(color.lime, 80), title="Mean Return % (M-period)")
+plot(price_stdev_return_M * 100, color=color.new(color.maroon, 80), title="StdDev Return % (M-period)")
 
 // === Action options
 type TradingAction
@@ -325,4 +356,7 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
                         strategy.entry("SOM", strategy.short, qty=action.amount)
                 // "hold" does nothing
 
+// Debug plots for trading activity
 plot(math.log(1+strategy.opentrades.capital_held), color=color.new(color.blue, 80), title="Log open trades capital held")
+plot(price_direction, color=color.new(color.navy, 80), title="Price Direction")
+plot(sigma, color=color.new(color.teal, 80), title="SOM Neighborhood Sigma")
