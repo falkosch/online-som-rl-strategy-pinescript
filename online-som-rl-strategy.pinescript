@@ -281,9 +281,7 @@ reward(string action_label, float current_position) =>
     // Directional consistency bonus
     price_direction = math.sign(source - source[1])
     action = map.get(action_dict, action_label)
-    action_direction = not na(action) ? 
-                       (action.direction == "long" ? 1.0 : 
-                        action.direction == "short" ? -1.0 : 0.0) : 0.0
+    action_direction = not na(action) ? (action.direction == "long" ? 1.0 : action.direction == "short" ? -1.0 : 0.0) : 0.0
     calculated_directional_bonus = price_direction == action_direction ? directional_bonus : 0.0
     
     // Trading cost
