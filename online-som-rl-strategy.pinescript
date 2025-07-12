@@ -50,7 +50,10 @@ plot(t_decay, color=color.new(color.orange, 80), title="t_decay")
 // === Reward calculation metrics (P-period forward-looking)
 source_p = source[P]
 std_price_p = ta.stdev(source, P) + numerical_epsilon
-risk_adjusted_return = ta.sma((source - source_p) / std_price_p, P)
+base_return = (source - source_p) / std_price_p
+calculated_volatility_penalty = math.min(std_price_p * volatility_penalty_factor, volatility_penalty_cap)
+price_direction = math.sign(source - source[1])
+risk_adjusted_return = ta.sma(base_return, P)
 plot(risk_adjusted_return, color=color.new(color.green, 70), title="Risk-adjusted Return")
 
 // === Feature preprocessing statistics (M-period backward-looking)
@@ -268,17 +271,10 @@ update_som_with_neighbors(int winner_index, float[] input_vector) =>
 
 // Computes reward signal incorporating returns, volatility penalties, position costs, and directional bonuses.
 reward(string action_label, float current_position) =>
-    // Base return calculation
-    base_return = (source - source_p) / std_price_p
-    
-    // Volatility penalty for high-risk periods
-    calculated_volatility_penalty = math.min(std_price_p * volatility_penalty_factor, volatility_penalty_cap)
-    
     // Position sizing penalty (discourage overtrading)
     calculated_position_penalty = math.abs(current_position) * position_penalty_factor
     
     // Directional consistency bonus
-    price_direction = math.sign(source - source[1])
     action = map.get(action_dict, action_label)
     action_direction = not na(action) ? (action.direction == "long" ? 1.0 : action.direction == "short" ? -1.0 : 0.0) : 0.0
     calculated_directional_bonus = price_direction == action_direction ? directional_bonus : 0.0
@@ -286,7 +282,7 @@ reward(string action_label, float current_position) =>
     // Trading cost
     trading_cost = (not na(action) and action.direction != "hold") ? trading_penalty : 0.0
     
-    // Calculate final reward with tanh normalization
+    // Calculate final reward with tanh normalization using precomputed series
     final_reward = base_return - calculated_volatility_penalty - calculated_position_penalty - trading_cost + calculated_directional_bonus
     tanh(final_reward)
 
