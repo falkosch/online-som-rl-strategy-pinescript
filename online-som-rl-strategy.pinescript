@@ -4,7 +4,7 @@ strategy("Online SOM-RL Strategy", overlay=true)
 // === SOM Node definition
 type SOMNode
     float[] state   // M-length input vector
-    float[] q_values // expected returns by action (in same order as action_labels)
+    map<string, float> q_values // expected returns by action label
 
 // === Configurable Inputs
 source = input.source(close, title="Price source")
@@ -52,9 +52,23 @@ gamma = initial_gamma * t_decay
 plot(t_decay, color=color.new(color.orange, 80), title="t_decay")
 
 // === Action options
-HOLD_ACTION_LABEL = "HOLD"
-action_labels = array.from(HOLD_ACTION_LABEL, "INV_500", "INV_1000", "INV_2000", "INV_5000", "SELL_500", "SELL_1000", "SELL_2000", "SELL_5000")
-num_actions = array.size(action_labels)
+type TradingAction
+    string direction  // "hold", "long", "short"
+    float amount     // trade quantity
+
+
+// Action dictionary mapping labels to TradingAction types
+var action_dict = map.new<string, TradingAction>()
+if bar_index == 0
+    map.put(action_dict, "HOLD", TradingAction.new("hold", 0.0))
+    map.put(action_dict, "INV_500", TradingAction.new("long", 500.0))
+    map.put(action_dict, "INV_1000", TradingAction.new("long", 1000.0))
+    map.put(action_dict, "INV_2000", TradingAction.new("long", 2000.0))
+    map.put(action_dict, "INV_5000", TradingAction.new("long", 5000.0))
+    map.put(action_dict, "SELL_500", TradingAction.new("short", 500.0))
+    map.put(action_dict, "SELL_1000", TradingAction.new("short", 1000.0))
+    map.put(action_dict, "SELL_2000", TradingAction.new("short", 2000.0))
+    map.put(action_dict, "SELL_5000", TradingAction.new("short", 5000.0))
 
 // Creates a new array of specified size filled with random values within given range.
 new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0, float max_value = 1.0) =>
@@ -185,8 +199,10 @@ if bar_index == 0
     for som_index = 0 to last_som_index
         // Initialize state vector with small random values
         initial_state = new_random_vector(state_vector_size, 0.0, -0.1, 0.1)
-        // Initialize Q-values with small positive values
-        initial_q_values = new_random_vector(num_actions, 0.001, 0.0, 0.002)
+        // Initialize Q-values dictionary with small positive values for each action
+        initial_q_values = map.new<string, float>()
+        for action_label in map.keys(action_dict)
+            map.put(initial_q_values, action_label, math.random(0.0, 0.002) + 0.001)
         
         som_node = SOMNode.new(initial_state, initial_q_values)
         array.set(som, som_index, som_node)
@@ -208,22 +224,26 @@ find_best_node(float[] x) =>
 
 // Selects the action with highest Q-value from a SOM node, with optional epsilon-greedy exploration.
 find_best_q(SOMNode node, p_exploration = 0.0) =>
+    action_keys = map.keys(node.q_values)
+    num_actions = array.size(action_keys)
+    
     if math.random(0.0, 1.0) <= p_exploration
-        // Generate random action index with proper bounds
+        // Generate random action with proper bounds
         explore_i = math.floor(math.random() * num_actions)
-        [explore_i, node.q_values.get(explore_i)]
+        explore_action = array.get(action_keys, explore_i)
+        [explore_action, map.get(node.q_values, explore_action)]
     else
-        best_action_index = 0
-        best_q_value = array.get(node.q_values, 0)
-        last_action_index = num_actions - 1
+        best_action = array.get(action_keys, 0)
+        best_q_value = map.get(node.q_values, best_action)
         
-        for action_index = 1 to last_action_index
-            current_q_value = array.get(node.q_values, action_index)
+        for i = 1 to array.size(action_keys) - 1
+            current_action = array.get(action_keys, i)
+            current_q_value = map.get(node.q_values, current_action)
             if current_q_value > best_q_value
-                best_action_index := action_index
+                best_action := current_action
                 best_q_value := current_q_value
         
-        [best_action_index, best_q_value]
+        [best_action, best_q_value]
 
 // Calculates Gaussian neighborhood influence for SOM learning based on distance from winning node.
 gaussian_kernel(int winner_index, int node_index) =>
@@ -260,12 +280,14 @@ reward(string action_label, float current_position) =>
     
     // Directional consistency bonus
     price_direction = math.sign(source - source[1])
-    action_direction = str.contains(action_label, "INV") ? 1.0 : 
-                      str.contains(action_label, "SELL") ? -1.0 : 0.0
+    action = map.get(action_dict, action_label)
+    action_direction = not na(action) ? 
+                       (action.direction == "long" ? 1.0 : 
+                        action.direction == "short" ? -1.0 : 0.0) : 0.0
     calculated_directional_bonus = price_direction == action_direction ? directional_bonus : 0.0
     
     // Trading cost
-    trading_cost = action_label == "HOLD" ? 0.0 : trading_penalty
+    trading_cost = (not na(action) and action.direction != "hold") ? trading_penalty : 0.0
     
     // Calculate final reward with tanh normalization
     final_reward = base_return - calculated_volatility_penalty - calculated_position_penalty - trading_cost + calculated_directional_bonus
@@ -277,8 +299,7 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
     input_now = get_input_vector(M, P)
     input_next = get_input_vector(M, 0)
     [best_i_now, _, best_node_now] = find_best_node(input_now)
-    [best_q_i_now, _] = find_best_q(best_node_now, exploration)
-    action_label = array.get(action_labels, best_q_i_now)
+    [action_label, _] = find_best_q(best_node_now, exploration)
     // Update SOM
     if 0 == (bar_index % update_som_each_n_bar)
         update_som_with_neighbors(best_i_now, input_now)
@@ -287,30 +308,28 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
     [_, next_best_q] = find_best_q(next_node)
     // Update q values
     q_values = best_node_now.q_values
-    old_q = array.get(q_values, best_q_i_now)
+    old_q = map.get(q_values, action_label)
     r = reward(action_label, strategy.opentrades.capital_held)
-    array.set(q_values, best_q_i_now, old_q + beta * (r + gamma * next_best_q - old_q))
+    map.put(q_values, action_label, old_q + beta * (r + gamma * next_best_q - old_q))
 
     // Then trade when warm up is done
     if (bar_index > learning_start_index + warmup_phase)
         // === Action Selection on Last Bar
         [best_i, best_d, best_node] = find_best_node(input_next)
-        [best_q_i, best_q] = find_best_q(best_node)
-        action_label = array.get(action_labels, best_q_i)
+        [action_label, best_q] = find_best_q(best_node)
         
         
-        log.info("bar {0}, {1} - i={2}, d={3}, q_i={4}, q={5}, a={6}", bar_index, t_decay, best_i, best_d, best_q_i, best_q, action_label)
+        log.info("bar {0}, {1} - i={2}, d={3}, a={4}, q={5}", bar_index, t_decay, best_i, best_d, action_label, best_q)
 
-        if str.startswith(action_label, "INV")
-            qty_str = str.replace(action_label, "INV_", "")
-            trade_quantity = str.tonumber(qty_str)
-            if not na(trade_quantity) and trade_quantity > 0
-                strategy.entry("SOM", strategy.long, qty=trade_quantity)
-        else if str.startswith(action_label, "SELL")
-            qty_str = str.replace(action_label, "SELL_", "")
-            trade_quantity = str.tonumber(qty_str)
-            if not na(trade_quantity) and trade_quantity > 0
-                strategy.entry("SOM", strategy.short, qty=trade_quantity)
-        // HOLD does nothing
+        action = map.get(action_dict, action_label)
+        if not na(action)
+            switch action.direction
+                "long" => 
+                    if action.amount > 0
+                        strategy.entry("SOM", strategy.long, qty=action.amount)
+                "short" => 
+                    if action.amount > 0
+                        strategy.entry("SOM", strategy.short, qty=action.amount)
+                // "hold" does nothing
 
 plot(math.log(1+strategy.opentrades.capital_held), color=color.new(color.blue, 80), title="Log open trades capital held")
