@@ -47,15 +47,13 @@ This PineScript strategy implements a machine learning approach to trading that:
 
 ## Input Vector Features
 
-The strategy uses a simplified, optimized input vector that focuses on price patterns with preprocessing adapted to the selected distance function for optimal SOM learning performance.
+The strategy uses a simplified input vector consisting of M past price ticks (default: 50) with preprocessing optimized for the selected distance function.
 
 ### Vector Structure
 
-The input vector consists of:
-
-1. **Price Features** (M dimensions): Historical price returns processed according to distance function
-
-**Total Vector Size**: `M` (default: 50 dimensions)
+- **Input**: M historical price values from the selected source (close, open, high, low, etc.)
+- **Preprocessing**: Transforms raw prices into normalized features suitable for SOM learning
+- **Total Vector Size**: M dimensions (default: 50)
 
 ### Distance-Optimized Preprocessing
 
@@ -80,15 +78,17 @@ The input vector consists of:
 
 ### Technical Benefits
 
-1. **Scale Consistency**: Price features are normalized to similar ranges for optimal learning
-2. **Stationarity**: Price returns are more stationary than raw price values
-3. **Outlier Robustness**: Clipping prevents extreme values from distorting SOM learning
-4. **Pattern Recognition**: DC removal and normalization enhance the SOM's ability to detect recurring patterns
+1. **Performance**: Simplified price-only vectors reduce computational overhead
+2. **Scale Consistency**: Normalization ensures all features contribute equally to distance calculations
+3. **Stationarity**: Using returns instead of raw prices improves learning stability
+4. **Outlier Robustness**: Z-score clipping (Euclidean) prevents extreme values from dominating
+5. **Pattern Recognition**: DC removal (Cosine) focuses on relative price movements
 
-### Configuration Parameters
+### Key Implementation Details
 
-- **M**: Number of historical price bars (default: 50)
-- **distance_function**: Preprocessing optimization ("cosine" or "euclidean")
+- **Precomputed Series**: Price statistics are calculated once per bar for efficiency
+- **Distance Functions**: Both cosine and euclidean distances are optimized for PineScript's series model
+- **Input Simplification**: Recent refactoring removed complex multi-component features in favor of price-only inputs
 
 ## Usage Instructions
 
@@ -118,8 +118,8 @@ The strategy code is in `./online-som-rl-strategy.pinescript`.
 
 ### Reward Function Parameters
 
-- **Volatility penalty factor**: Penalty for high volatility (default: 0.1)
-- **Volatility penalty cap**: Maximum volatility penalty (default: 0.05)
+- **Volatility penalty factor**: Penalty for high volatility (default: 0.05)
+- **Volatility penalty cap**: Maximum volatility penalty (default: 0.1)
 - **Position penalty factor**: Penalty for large positions (default: 0.001)
 - **Directional bonus**: Reward for directional consistency (default: 0.01)
 - **Trading penalty**: Cost of trading (default: 0.02)
@@ -134,7 +134,22 @@ The strategy code is in `./online-som-rl-strategy.pinescript`.
 - **Warmup phase**: Learning-only period (default: 7000)
 - **SOM update frequency**: Update SOM every N bars (default: 2)
 
-## How to use claude code in this project
+## Recent Updates and Known Issues
+
+### Recent Development Focus
+
+- Reward function improvements and analysis
+- Performance optimization through precomputed series
+- Simplified input vectors (removed complex features)
+- Custom `TradingAction` type for clearer action representation
+
+### Known Issues Under Investigation
+
+- Volatility penalty may consistently hit the cap (10%) - requires tuning
+- Base return calculation uses simple price differences - could consider price path shape
+- Precomputed series organization could be further optimized
+
+## How to use Claude Code in this project
 
 On Windows: A .devcontainer-config is provided, so that you can use claude in a linux-container.
 

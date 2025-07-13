@@ -12,6 +12,14 @@ This is an educational PineScript trading strategy that combines Self-Organizing
 - `README.md` - Project documentation (may be outdated - check against code)
 - `package.json` - Project metadata and Claude Code integration
 
+## Commands
+
+Since this is a PineScript project:
+
+- **Testing**: No automated tests available - manual testing in TradingView required
+- **Linting**: No linting available for PineScript
+- **Running**: Copy code to TradingView Pine Editor and add to chart
+
 ## Strategy Architecture
 
 ### Core Components
@@ -124,13 +132,15 @@ Two distance functions available:
 
 Both use precomputed series statistics for performance.
 
-### Recent Optimizations
+### Recent Development Focus
 
-Recent commits show focus on:
+Based on recent commits:
 
-- Precomputed price series for distance calculations
-- Action labels refactored to custom types
-- Input vector simplified from complex multi-component to price-only
+- Reward function analysis and improvements (base_return computation)
+- Volatility penalty investigation (constant value issue)
+- Performance optimization through precomputed series
+- Variable regrouping for better semantic relationships
+- Action labels refactored to custom `TradingAction` type
 
 ## Documentation Maintenance
 
@@ -141,3 +151,9 @@ Recent commits show focus on:
 - No API keys or sensitive data in code
 - Educational use only - not for production trading
 - All trading decisions logged for transparency
+
+## Known Issues and Areas of Investigation
+
+- Volatility penalty appears to always hit the cap (5%) - needs investigation
+- Base return calculation simplicity - considers only price difference, not curve shape
+- Potential for further optimization in precomputed series organization
