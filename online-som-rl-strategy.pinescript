@@ -55,7 +55,7 @@ std_price_p = ta.stdev(source, P) + numerical_epsilon
 per_period_return = math.pow((source / math.max(source_p, numerical_epsilon)), 1.0 / P) - 1.0
 
 // Path quality metrics over P-period window (sample-based, not cumulative)
-avg_period_volatility = ta.stdev(ta.roc(source, 1), P) // Per-bar volatility estimate
+avg_period_volatility = ta.stdev(nz(ta.roc(source, 1), 0.0), P) // Per-bar volatility estimate
 path_volatility = avg_period_volatility * math.sqrt(P) // Annualized volatility estimate
 path_smoothness = 1.0 / (1.0 + path_volatility) // Inverse relationship with volatility
 
@@ -73,8 +73,9 @@ risk_adjusted_return = ta.sma(base_return, P)
 
 // === Feature preprocessing statistics (M-period backward-looking)
 price_mean_M = ta.sma(safe_source, M)
-price_mean_return_M = ta.sma(ta.roc(safe_source, 1), M)
-price_stdev_return_M = ta.stdev(ta.roc(safe_source, 1), M)
+// Use nz() to handle NA values in ta.roc for the first bar
+price_mean_return_M = ta.sma(nz(ta.roc(safe_source, 1), 0.0), M)
+price_stdev_return_M = ta.stdev(nz(ta.roc(safe_source, 1), 0.0), M)
 
 // === Action options
 type TradingAction
@@ -113,22 +114,25 @@ new_random_vector(int vector_size, float base_value = 0.0, float min_value = 0.0
 get_cosine_features(int bars, int bar_offset = 0) =>
     features = array.new_float(bars)
     
-    // Use precomputed price mean (adjusted for offset if needed)
-    current_price_mean = bar_offset == 0 ? price_mean_M : price_mean_M[bar_offset]
-    
-    // Process features for cosine distance using direct series access
+    // Use price returns instead of raw prices to get meaningful differences
     for bar_idx = 0 to bars - 1
-        // Calculate price return using direct series access
-        current_offset = bar_offset + bar_idx
-        price_return = 0.0
-        if bar_idx > 0
-            prev_offset = bar_offset + bar_idx - 1
-            price_val = safe_source[current_offset]
-            prev_price = safe_source[prev_offset]
-            price_return = (price_val - prev_price) / math.max(prev_price, numerical_epsilon)
+        price_feature = 0.0
         
-        // Apply DC removal using precomputed mean
-        price_feature = price_return - (current_price_mean / math.max(current_price_mean, numerical_epsilon))
+        if bar_idx == 0
+            // For first element, use a small non-zero value
+            price_feature := 0.1
+        else
+            // Calculate return between consecutive bars in our window
+            current_bar_offset = bar_offset + bar_idx
+            prev_bar_offset = bar_offset + bar_idx - 1
+            
+            if current_bar_offset >= 0 and prev_bar_offset >= 0
+                current_price = nz(safe_source[current_bar_offset], safe_source)
+                prev_price = nz(safe_source[prev_bar_offset], safe_source)
+                if prev_price > 0
+                    // Calculate return and scale by 10000 for numerical precision
+                    price_feature := ((current_price - prev_price) / prev_price) * 10000.0
+        
         array.set(features, bar_idx, price_feature)
     
     features
@@ -137,27 +141,48 @@ get_cosine_features(int bars, int bar_offset = 0) =>
 get_euclidean_features(int bars, int bar_offset = 0) =>
     features = array.new_float(bars)
     
-    // Use precomputed statistics (adjusted for offset if needed)
-    current_return_mean = bar_offset == 0 ? price_mean_return_M : price_mean_return_M[bar_offset]
-    current_return_std = bar_offset == 0 ? price_stdev_return_M : price_stdev_return_M[bar_offset]
-    current_return_std_safe = current_return_std + numerical_epsilon
-    
-    // Apply z-score normalization with clipping using precomputed statistics
+    // Use price returns for better discrimination
     for bar_idx = 0 to bars - 1
-        // Calculate price return using direct series access
-        price_return = 0.0
-        if bar_idx > 0
-            current_offset = bar_offset + bar_idx
-            prev_offset = bar_offset + bar_idx - 1
-            price_val = safe_source[current_offset]
-            prev_price = safe_source[prev_offset]
-            price_return = (price_val - prev_price) / math.max(prev_price, numerical_epsilon)
+        price_feature = 0.0
         
-        // Z-score normalized price returns (clipped to configured range)
-        price_zscore = (price_return - current_return_mean) / current_return_std_safe
-        price_feature = math.max(-zscore_clip_range, math.min(zscore_clip_range, price_zscore))
+        if bar_idx == 0
+            // For first element, use a small non-zero value
+            price_feature := 0.1
+        else
+            // Calculate return between consecutive bars in our window
+            current_bar_offset = bar_offset + bar_idx
+            prev_bar_offset = bar_offset + bar_idx - 1
+            
+            if current_bar_offset >= 0 and prev_bar_offset >= 0
+                current_price = nz(safe_source[current_bar_offset], safe_source)
+                prev_price = nz(safe_source[prev_bar_offset], safe_source)
+                if prev_price > 0
+                    // Calculate return and scale by 10000 for numerical precision
+                    price_feature := ((current_price - prev_price) / prev_price) * 10000.0
         
         array.set(features, bar_idx, price_feature)
+    
+    // Calculate mean for z-score normalization
+    feature_sum = 0.0
+    for idx = 0 to bars - 1
+        feature_sum += array.get(features, idx)
+    
+    feature_mean = feature_sum / bars
+    
+    // Calculate standard deviation
+    variance_sum = 0.0
+    for idx = 0 to bars - 1
+        val = array.get(features, idx)
+        variance_sum += math.pow(val - feature_mean, 2)
+    
+    feature_std = math.sqrt(variance_sum / bars)
+    feature_std_safe = math.max(feature_std, numerical_epsilon)
+    
+    // Apply z-score normalization
+    for idx = 0 to bars - 1
+        val = array.get(features, idx)
+        z_score = (val - feature_mean) / feature_std_safe
+        array.set(features, idx, math.max(-zscore_clip_range, math.min(zscore_clip_range, z_score)))
     
     features
 
@@ -197,7 +222,13 @@ cosine_distance(float[] a, float[] b) =>
         norm_a += value_a * value_a
         norm_b += value_b * value_b
         dot_ab += value_a * value_b
-    1.0 - dot_ab / (math.sqrt(norm_a * norm_b) + numerical_epsilon)
+    
+    // Handle zero vectors - if either vector has zero norm, return max distance
+    denominator = math.sqrt(norm_a) * math.sqrt(norm_b)
+    if denominator <= numerical_epsilon
+        1.0  // Maximum distance for zero vectors
+    else
+        1.0 - dot_ab / denominator
 
 // Selects and applies the configured distance function for vector similarity calculation.
 distance(float[] a, float[] b) =>
@@ -329,7 +360,6 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
         [best_i, best_d, best_node] = find_best_node(input_next)
         [action_label, best_q] = find_best_q(best_node)
         
-        
         log.info("bar {0}, {1} - i={2}, d={3}, a={4}, q={5}", bar_index, t_decay, best_i, best_d, action_label, best_q)
 
         action = map.get(action_dict, action_label)
@@ -343,5 +373,5 @@ if (bar_index >= learning_start_index) and (bar_index < last_bar_index)
                         strategy.entry("SOM", strategy.short, qty=action.amount)
                 // "hold" does nothing
 
-// Debug plots
+// Plot reward function value for monitoring
 plot(current_reward, color=color.new(color.red, 0), title="Reward Function Value")
